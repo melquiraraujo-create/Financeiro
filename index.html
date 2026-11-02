@@ -542,7 +542,7 @@ function createMonth(key,o){
       m.meta=sm.meta||0;
       for(const it of sm.itens){
         const base={id:uid(),sec:it.sec,g:it.g||'',v:it.v,f:it.f||'',d:it.d,dia:it.dia,c:it.c,ok:false};
-        if(isInc(it)){if(o.rec){m.itens.push(base);stats.rec++}continue}
+        if(isInc(it)){if(o.rec&&!it.rend){m.itens.push(base);stats.rec++}continue}
         if(it.sec==='reembolsos'){
           if(!o.reemb)continue;
           const im=String(it.d||'').match(INST_RE);
@@ -900,7 +900,7 @@ function secHTML(sec){
 function balHTML(){
   const m=curMonth();
   const rows=vAccts(m).map(a=>`<tr><td>${esc(a)}</td><td><input data-ini="${esc(a)}" value="${NUM.format(+m.ini[a]||0)}" inputmode="decimal" aria-label="Saldo inicial ${esc(a)}"></td><td data-k="acc|${esc(a)}|saldo"></td><td data-k="acc|${esc(a)}|proj"></td></tr>`).join('');
-  return `<section class="sec"><header><h2>Saldo por conta</h2><div class="tot"><button class="btn ghost" data-act="pull" title="Usa o saldo final de cada conta no mês anterior (só lançamentos com ok)">Puxar do mês anterior</button></div></header>
+  return `<section class="sec"><header><h2>Saldo por conta</h2><div class="tot"><button class="btn ghost" data-act="acerta" title="Informe o saldo real do banco e o app lança a diferença como rendimento">Acertar saldo</button> <button class="btn ghost" data-act="pull" title="Usa o saldo final de cada conta no mês anterior (só lançamentos com ok)">Puxar do mês anterior</button></div></header>
   <table class="bal"><thead><tr><th>Conta</th><th>Início</th><th>Agora</th><th>Projeção</th></tr></thead><tbody>${rows}</tbody>
   <tfoot><tr><td>Total</td><td data-k="ini"></td><td data-k="inst"></td><td data-k="proj"></td></tr></tfoot></table>
   <div class="chkbox" id="chkbox"><span data-k="chkmsg"></span><small>Soma das contas menos o saldo do mês. Deve ficar em R$ 0,00.</small></div></section>
@@ -1586,6 +1586,16 @@ document.addEventListener('click',e=>{
     case 'delm':{const k=ui.cur;askConfirm('Excluir mês',`Excluir ${mLabel(k)} com todos os lançamentos?`,'Excluir').then(ok=>{if(ok){mutate(()=>{delete db.months[k]});ui.cur=monthKeys().slice(-1)[0]||null;render();toast('Mês excluído',{label:'Desfazer',fn:undo})}});break}
     case 'pull':{const pk=prevKey(ui.cur);if(!pk){toast('Não há mês anterior');break}const c=calc(db.months[pk]);const m=curMonth();mutate(()=>{for(const a of db.accts)m.ini[a]=r2(c.per[a].saldo)});render();toast('Saldos iniciais atualizados com o saldo final de '+mLabel(pk));break}
     case 'clear':openClearDialog();break;
+    case 'acerta':{const m=curMonth();if(!m)break;const c=calc(m);const cur=(c.per[MAIN]||{}).saldo||0;
+      const ans=prompt(`Saldo real do ${MAIN} agora (como aparece no app do banco).\nO app lança a diferença como rendimento.\n\nSaldo atual no app: ${money(cur)}`,'');
+      if(ans===null||!String(ans).trim())break;const real=brNum(String(ans).replace(/R\$/gi,''));
+      if(!isFinite(real)){toast('Valor inválido');break}
+      const diff=r2(real-cur);
+      if(diff===0){toast('Já está batendo com o banco');break}
+      if(diff<0){alert(`O saldo real é ${money(-diff)} MENOR que o do app. Provavelmente falta lançar ou marcar como pago algum gasto. Nada foi alterado.`);break}
+      mutate(()=>{let r=m.itens.find(i=>i.rend&&i.c===MAIN);
+        if(r){r.v=r2(r.v+diff);r.ok=true}else m.itens.push({id:uid(),sec:'ganhosM',g:'',v:diff,f:'',d:'Rendimentos '+MAIN,dia:new Date().getDate(),c:MAIN,ok:true,rend:true})});
+      render();toast(`Rendimentos: +${money(diff)} lançado`);break}
     case 'pw':openPwDialog();break;
     case 'demo':{mutate(()=>{Object.assign(db.months,JSON.parse(JSON.stringify(DEMO)))});ui.cur=monthKeys().slice(-1)[0];render();break}
   }
