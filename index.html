@@ -534,8 +534,9 @@ function calc(m,accts=db.accts){
     projPct:metaR?proj/metaR:NaN,projRS:proj-metaR,cresc:iniTot?proj/iniTot-1:NaN,res:proj-iniTot,
     econ:totRec?(proj-iniTot)/totRec:NaN,chk:r2(sumSaldo-inst)};
 }
+const gk=i=>{const g=i.g||'';return g==='Geral'?'':g};
 function secCalc(m,sec,grupo){
-  let tot=0,pg=0;for(const it of m.itens){if(it.sec!==sec)continue;if(grupo!==undefined&&(it.g||'')!==grupo)continue;tot+=it.v;if(it.ok)pg+=it.v}
+  let tot=0,pg=0;for(const it of m.itens){if(it.sec!==sec)continue;if(grupo!==undefined&&gk(it)!==grupo)continue;tot+=it.v;if(it.ok)pg+=it.v}
   return {tot,pg,falta:tot-pg};
 }
 
@@ -877,7 +878,7 @@ function rowHTML(it){
    <select data-f="c" class="${bad?'warnsel':''}" aria-label="Conta">${accOpts}</select>`}
    <button class="xbtn" data-act="del" aria-label="Excluir lançamento" title="Excluir">×</button></div>`;
 }
-function topGroup(sec){const m=curMonth(),cnt={};m.itens.filter(i=>i.sec===sec&&i.g).forEach(i=>cnt[i.g]=(cnt[i.g]||0)+1);return Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]||''}
+function topGroup(sec){const m=curMonth(),cnt={};m.itens.filter(i=>i.sec===sec).forEach(i=>{const k=gk(i);cnt[k]=(cnt[k]||0)+1});return Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]||''}
 function addFormHTML(sec){
   const s=SECS[sec],m=curMonth();const last=db.last['c_'+sec]||defAcct();
   const opts=vAccts(m).map(a=>`<option ${a===last?'selected':''}>${esc(a)}</option>`).join('');
@@ -885,7 +886,7 @@ function addFormHTML(sec){
     return `<form class="add" data-sec="${sec}" autocomplete="off"><span></span><input class="v" name="v" placeholder="Valor" inputmode="decimal" aria-label="Novo valor"><input name="d" placeholder="Descrição (ex.: pix para poupança)" aria-label="Nova descrição"><input class="dia" name="dia" placeholder="dia" inputmode="numeric" maxlength="2" aria-label="Dia"><select name="c" aria-label="De (sai da conta)">${opts}</select><span class="arw" aria-hidden="true">→</span><select name="c2" aria-label="Para (entra na conta)">${o2}</select><button class="btn pri sq" aria-label="Adicionar" title="Adicionar (Enter)">+</button></form>`}
   let grp='';
   if(s.grp){const gs=[...new Set(m.itens.filter(i=>i.sec===sec&&i.g).map(i=>i.g))];
-    grp=`<div class="addgrp addtop"><input name="g" list="gl_${sec}" placeholder="Cartão / grupo" value="${esc(topGroup(sec)||db.last['g_'+sec]||gs[0]||'')}" aria-label="Cartão ou grupo"><button type="button" class="btn" data-act="imp-fat" data-sec="${sec}" title="Importa a fatura do Itaú (.xlsx ou .pdf): parcelas primeiro, o resto somado por categoria">Importar fatura</button><button type="button" class="btn" data-act="imp-sms" data-sec="${sec}" title="Cole os SMS de compra aprovada">Colar SMS</button></div><datalist id="gl_${sec}">${gs.map(g=>`<option value="${esc(g)}">`).join('')}</datalist>`}
+    grp=`<div class="addgrp addtop"><input name="g" list="gl_${sec}" placeholder="Cartão / grupo" value="${esc(m.itens.some(i=>i.sec===sec)?topGroup(sec):(db.last['g_'+sec]||''))}" aria-label="Cartão ou grupo"><button type="button" class="btn" data-act="imp-fat" data-sec="${sec}" title="Importa a fatura do Itaú (.xlsx ou .pdf): parcelas primeiro, o resto somado por categoria">Importar fatura</button><button type="button" class="btn" data-act="imp-sms" data-sec="${sec}" title="Cole os SMS de compra aprovada">Colar SMS</button></div><datalist id="gl_${sec}">${gs.map(g=>`<option value="${esc(g)}">`).join('')}</datalist>`}
   return `<form class="add ${s.grp?'card':''}" data-sec="${sec}" autocomplete="off">
    ${grp}
    <span></span><input class="v" name="v" placeholder="Valor" inputmode="decimal" aria-label="Novo valor"><input name="d" placeholder="Descrição" aria-label="Nova descrição">${s.grp?'':`<input class="dia" name="dia" placeholder="dia" inputmode="numeric" maxlength="2" aria-label="Dia"><select name="c" aria-label="Conta">${opts}</select>`}<button class="btn pri sq" aria-label="Adicionar" title="Adicionar (Enter)">+</button></form>`;
@@ -904,13 +905,13 @@ function secHTML(sec){
   const s=SECS[sec],m=curMonth();const its=m.itens.filter(i=>i.sec===sec);
   let body='';
   if(s.grp){
-    const gs=[...new Set(its.map(i=>i.g||''))];
+    const gs=[...new Set(its.map(gk))];
     const single=gs.every(g=>g===''||g==='Geral');
     const falta=i=>{const q=String(i.d||'').match(INST_RE);return q?(+q[3])-(+q[1]):0};
     const ordem=a=>a.map((i,ix)=>({i,ix})).sort((x,y)=>{const px=isParc(x.i),py=isParc(y.i);if(px!==py)return px?-1:1;if(px)return falta(y.i)-falta(x.i)||y.i.v-x.i.v||x.ix-y.ix;return x.ix-y.ix}).map(x=>x.i);
-    body=gs.map(g=>{const rows=ordem(its.filter(i=>(i.g||'')===g&&visible(i)));
+    body=gs.map(g=>{const rows=ordem(its.filter(i=>gk(i)===g&&visible(i)));
       if(single)return rows.map(rowHTML).join('');
-      return `<div class="grp"><span>${esc(g||'Sem grupo')}</span><b data-k="grp|${esc(sec)}|${esc(g)}"></b></div>`+rows.map(rowHTML).join('')}).join('');
+      return `<div class="grp"><span data-act="grpren" data-sec="${sec}" data-g="${esc(g)}" title="Clique para renomear ou juntar com outro grupo" style="cursor:pointer">${esc(g||'Sem grupo')} ✎</span><b data-k="grp|${esc(sec)}|${esc(g)}"></b></div>`+rows.map(rowHTML).join('')}).join('');
   }else body=its.filter(visible).map(rowHTML).join('');
   if(!its.length)body=`<div class="empty">Nenhum lançamento ainda.</div>`;
   const inc=s.inc||s.neg;
@@ -985,7 +986,7 @@ function refreshTotals(){
   for(const a of db.accts){const p=c.per[a];K[`acc|${a}|saldo`]=money(p.saldo);K[`acc|${a}|proj`]=money(p.proj);NEG[`acc|${a}|saldo`]=p.saldo<0;NEG[`acc|${a}|proj`]=p.proj<0}
   for(const sec of Object.keys(SECS)){const s=secCalc(m,sec);K[`sec|${sec}|tot`]=money(s.tot);K[`sec|${sec}|pg`]=money(s.pg);K[`sec|${sec}|falta`]=money(s.falta);
     if(SECS[sec].grp){const T3=thirdParcels(m);const all=m.itens.filter(i=>i.sec===sec&&isParc(i));K[`sec|${sec}|parc`]=money(all.filter(i=>!T3.has(i.id)).reduce((t,i)=>t+i.v,0));const el=$(`[data-k="sec|${sec}|parc"]`);if(el)el.parentElement.title='Parcelas totais, com as de terceiros: '+money(all.reduce((t,i)=>t+i.v,0))}
-    if(SECS[sec].grp)for(const g of new Set(m.itens.filter(i=>i.sec===sec).map(i=>i.g||''))){K[`grp|${sec}|${g}`]=money(secCalc(m,sec,g).tot)}}
+    if(SECS[sec].grp)for(const g of new Set(m.itens.filter(i=>i.sec===sec).map(gk))){K[`grp|${sec}|${g}`]=money(secCalc(m,sec,g).tot)}}
   {let tm=0,tg=0;for(const cat of ORC){const g=catSpent(m,cat),mt=+(m.orc||{})[cat]||0;
      K[`orc|${cat}|g`]=money(g);K[`orc|${cat}|d`]=mt?money(mt-g):'—';NEG[`orc|${cat}|d`]=mt>0&&mt-g<0;if(mt){tm+=mt;tg+=g}
      const tr=$(`tr[data-orc="${cat}"]`);if(tr){const r=mt?g/mt:0;tr.classList.toggle('warn',r>=.8&&r<=1);tr.classList.toggle('over',r>1)}}
@@ -1681,6 +1682,9 @@ document.addEventListener('click',e=>{
       if(m.closed){mutate(()=>{m.closed=false});render();toast('Mês reaberto: o disponível das metas volta a ser reservado na projeção');break}
       askConfirm('Fechar '+mLabel(ui.cur),'A projeção deixa de reservar o que sobrou das metas e passa a usar só os gastos reais lançados neste mês. Você pode reabrir depois.','Fechar mês').then(ok=>{if(!ok)return;mutate(()=>{m.closed=true});render();toast(mLabel(ui.cur)+' fechado: projeção com gastos reais',{label:'Desfazer',fn:undo})});break}
     case 'orcdef':{const m=curMonth();if(!m||!m.orc||!Object.keys(m.orc).length){toast('Este mês não tem metas');break}mutate(()=>{db.orcDef={...m.orc}});toast('Metas deste mês viraram o padrão dos próximos meses');break}
+    case 'grpren':{const sec=b.dataset.sec,g=b.dataset.g||'',m=curMonth();
+      askText('Mover para outro grupo','Nome do grupo de destino (em branco = sem grupo). Se já existir, os lançamentos são juntados.',g||'sem grupo').then(v=>{if(v===null)return;const nv=v.trim();
+        mutate(()=>{m.itens.forEach(i=>{if(i.sec===sec&&gk(i)===g)i.g=nv})});render();toast(nv?`Lançamentos movidos para "${nv}"`:'Lançamentos movidos para sem grupo',{label:'Desfazer',fn:undo})});break}
     case 'orcavg':{const m=curMonth();if(!m)break;mutate(()=>{m.orc=m.orc||{};for(const c of ORC){if(!m.orc[c]){const a=Math.round(catAvg(c,ui.cur));if(a>0)m.orc[c]=a}}});render();toast('Metas vazias preenchidas com a média dos meses anteriores');break}
     case 'acerta':{const m=curMonth();if(!m)break;const c=calc(m);const cur=(c.per[MAIN]||{}).saldo||0;
       const ans=prompt(`Saldo real do ${MAIN} agora (como aparece no app do banco).\nO app lança a diferença como rendimento.\n\nSaldo atual no app: ${money(cur)}`,'');
@@ -1741,11 +1745,11 @@ document.addEventListener('submit',e=>{
   const e2=normExpr(fd.get('v'));const hc=SECS[sec].grp?cardHdr(sec,m):null;if(hc){fd.set('c',hc.c);fd.set('dia',hc.dia??'')}const dn=parseInt(fd.get('dia'),10);
   const g=SECS[sec].grp?String(fd.get('g')||'').trim()||'Geral':'';
   if(SECS[sec].tr&&fd.get('c')===fd.get('c2')){toast('Escolha contas diferentes para origem e destino');return}
-  const gsAntes=SECS[sec].grp?[...new Set(m.itens.filter(i=>i.sec===sec&&i.g&&i.g!=='Geral').map(i=>i.g))]:[];
+  const gsAntes=SECS[sec].grp?[...new Set(m.itens.filter(i=>i.sec===sec).map(gk))]:[];
   const cardPaid=SECS[sec].grp&&(()=>{const a=m.itens.filter(i=>i.sec===sec);return a.length>0&&a.every(i=>i.ok)})();
   mutate(()=>{m.itens.push({id:uid(),sec,g,v:n,f:e2&&!isPlainNum(e2)?e2:'',d:String(fd.get('d')||'').trim(),dia:dn>=1&&dn<=31?dn:null,c:fd.get('c'),ok:!!cardPaid,...(SECS[sec].tr?{c2:fd.get('c2')}:{})});if(SECS[sec].tr)db.last.c2_transf=fd.get('c2');db.last['c_'+sec]=fd.get('c');if(g)db.last['g_'+sec]=g});
   ui.focus=sec;render();
-  if(gsAntes.length&&g&&!gsAntes.includes(g)){const top=topGroup(sec);toast(`Criou o grupo novo "${g}". Para somar no cartão existente, digite "${gsAntes.includes(top)?top:gsAntes[0]}" no campo Cartão / grupo.`)}
+  if(gsAntes.length&&g!=='Geral'&&!gsAntes.includes(g)){const ex=gsAntes.filter(Boolean)[0];toast(ex?`Criou o grupo novo "${g}". Para somar no cartão existente, digite "${ex}" no campo Cartão / grupo.`:`Criou o grupo novo "${g}", separado dos lançamentos que não têm grupo. Para juntar, clique no nome do grupo (✎) e deixe em branco.`)}
 });
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&!e.target.matches('input,textarea')){e.preventDefault();undo()}
