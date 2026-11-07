@@ -89,6 +89,10 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .flow.out.over .amt{color:var(--neg)}.flow.out.over .bar{color:var(--neg)}
 .projline.warn{background:var(--warn-bg)}.projline.warn .pctg{color:var(--warn);font-weight:650}
 .projline.over .pctg{color:var(--neg);font-weight:650}
+table.orc tr.warn td{background:var(--warn-bg)}table.orc tr.warn td:nth-child(3),table.orc tr.warn td:nth-child(4){color:var(--warn);font-weight:650}
+table.orc tr.over td:nth-child(3),table.orc tr.over td:nth-child(4){color:var(--neg);font-weight:650}
+table.orc td input::placeholder{color:var(--muted);opacity:.7;font-size:12px}
+.pnote{margin:0;padding:10px 14px;color:var(--muted);font-size:12.5px;line-height:1.45}
 
 .cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px;margin-top:18px;align-items:start}
 .col-side{position:sticky;top:calc(64px + env(safe-area-inset-top,0px));display:grid;gap:18px}
@@ -529,7 +533,7 @@ function advanceInst(desc){
   const n=+m[1],t=+m[3];if(t<2||n<1||n>=t)return null;
   return desc.replace(INST_RE,(s,a,sep,b)=>String(n+1).padStart(a.length,'0')+sep+b);
 }
-function newMonthData(){return {ini:{},meta:0,itens:[]}}
+function newMonthData(){return {ini:{},meta:0,orc:{},itens:[]}}
 function prevKey(k){return monthKeys().filter(x=>x<k).pop()||null}
 function createMonth(key,o){
   if(db.months[key]){ui.cur=key;render();return}
@@ -538,8 +542,8 @@ function createMonth(key,o){
     const m=newMonthData();
     if(sm){
       const c=calc(sm);
-      if(o.saldo)for(const a of db.accts)m.ini[a]=r2(c.per[a].saldo);
-      m.meta=sm.meta||0;
+      if(o.saldo)for(const a of db.accts)m.ini[a]=r2(c.per[a].proj);
+      m.meta=sm.meta||0;m.orc={...(sm.orc||{})};
       for(const it of sm.itens){
         const base={id:uid(),sec:it.sec,g:it.g||'',v:it.v,f:it.f||'',d:it.d,dia:it.dia,c:it.c,ok:false};
         if(isInc(it)){if(o.rec&&!it.rend){m.itens.push(base);stats.rec++}continue}
@@ -900,7 +904,7 @@ function secHTML(sec){
 function balHTML(){
   const m=curMonth();
   const rows=vAccts(m).map(a=>`<tr><td>${esc(a)}</td><td><input data-ini="${esc(a)}" value="${NUM.format(+m.ini[a]||0)}" inputmode="decimal" aria-label="Saldo inicial ${esc(a)}"></td><td data-k="acc|${esc(a)}|saldo"></td><td data-k="acc|${esc(a)}|proj"></td></tr>`).join('');
-  return `<section class="sec"><header><h2>Saldo por conta</h2><div class="tot"><button class="btn ghost" data-act="acerta" title="Informe o saldo real do banco e o app lança a diferença como rendimento">Acertar saldo</button> <button class="btn ghost" data-act="pull" title="Usa o saldo final de cada conta no mês anterior (só lançamentos com ok)">Puxar do mês anterior</button></div></header>
+  return `<section class="sec"><header><h2>Saldo por conta</h2><div class="tot"><button class="btn ghost" data-act="acerta" title="Informe o saldo real do banco e o app lança a diferença como rendimento">Acertar saldo</button> <button class="btn ghost" data-act="pull" title="Usa a projeção do saldo final de cada conta no mês anterior">Puxar do mês anterior</button></div></header>
   <table class="bal"><thead><tr><th>Conta</th><th>Início</th><th>Agora</th><th>Projeção</th></tr></thead><tbody>${rows}</tbody>
   <tfoot><tr><td>Total</td><td data-k="ini"></td><td data-k="inst"></td><td data-k="proj"></td></tr></tfoot></table>
   <div class="chkbox" id="chkbox"><span data-k="chkmsg"></span><small>Soma das contas menos o saldo do mês. Deve ficar em R$ 0,00.</small></div></section>
@@ -914,6 +918,14 @@ function balHTML(){
    <span>Resultado atual do mês</span><b data-k="res"></b>
    <span>Economia atual (% dos recebíveis)</span><b data-k="econ"></b></div>
    <div style="padding:0 14px 14px"><button class="btn" data-act="clear" style="color:var(--neg);border-color:var(--neg)">Limpar mês…</button></div></section>`;
+}
+function orcHTML(){
+  const m=curMonth(),o=m.orc||{};
+  const rows=ORC.map(c=>{const av=catAvg(c,ui.cur);return `<tr data-orc="${c}"><td>${ORCL[c]}</td><td><input data-orc-in="${c}" value="${o[c]?NUM.format(o[c]):''}" placeholder="${av?'média '+NUM.format(av):'0,00'}" inputmode="decimal" aria-label="Meta de ${ORCL[c]}"></td><td data-k="orc|${c}|g"></td><td data-k="orc|${c}|d"></td></tr>`}).join('');
+  return `<section class="sec"><header><h2>Orçamento do mês</h2><div class="tot"><button class="btn ghost" data-act="orcavg" title="Preenche as metas vazias com a média dos meses anteriores">Usar médias</button></div></header>
+  <table class="bal orc"><thead><tr><th>Categoria</th><th>Meta</th><th>Gasto</th><th>Disponível</th></tr></thead><tbody>${rows}</tbody>
+  <tfoot><tr><td>Total</td><td data-k="orc|t|m"></td><td data-k="orc|t|g"></td><td data-k="orc|t|d"></td></tr></tfoot></table>
+  <p class="pnote">Conta as compras do cartão (sem parcelas) e desconta da meta. Amarelo a partir de 80% da meta, vermelho ao passar.</p></section>`;
 }
 function summaryHTML(){
   return `<section class="band" aria-label="Resumo do mês">
@@ -940,7 +952,7 @@ function render(){
   if(ui.view==='dash'){app.innerHTML=`<div class="dash">${dashHTML()}</div>`;drawDash();return}
   ui.t3=thirdParcels(m);
   const fab=`<button class="fab" data-act="imp-sms" data-sec="cartaoM" aria-label="Colar SMS do cartão">＋ SMS</button>`;
-  app.innerHTML=fab+summaryHTML()+`<div class="cols"><div>${['cartaoM','cartaoD','fixas','variaveis','transf'].filter(k=>secShown(k)).map(secHTML).join('')}</div><div class="col-side">${['ganhosM','ganhosD','reembolsos'].filter(k=>secShown(k)).map(secHTML).join('')}${balHTML()}</div></div>`;
+  app.innerHTML=fab+summaryHTML()+`<div class="cols"><div>${['cartaoM','cartaoD','fixas','variaveis','transf'].filter(k=>secShown(k)).map(secHTML).join('')}</div><div class="col-side">${['ganhosM','ganhosD','reembolsos'].filter(k=>secShown(k)).map(secHTML).join('')}${orcHTML()}${balHTML()}</div></div>`;
   refreshTotals();
   if(ui.focus){const f=$(`form.add[data-sec="${ui.focus}"] input[name="v"]`);f&&f.focus();ui.focus=null}
 }
@@ -955,6 +967,10 @@ function refreshTotals(){
   for(const sec of Object.keys(SECS)){const s=secCalc(m,sec);K[`sec|${sec}|tot`]=money(s.tot);K[`sec|${sec}|pg`]=money(s.pg);K[`sec|${sec}|falta`]=money(s.falta);
     if(SECS[sec].grp){const T3=thirdParcels(m);const all=m.itens.filter(i=>i.sec===sec&&isParc(i));K[`sec|${sec}|parc`]=money(all.filter(i=>!T3.has(i.id)).reduce((t,i)=>t+i.v,0));const el=$(`[data-k="sec|${sec}|parc"]`);if(el)el.parentElement.title='Parcelas totais, com as de terceiros: '+money(all.reduce((t,i)=>t+i.v,0))}
     if(SECS[sec].grp)for(const g of new Set(m.itens.filter(i=>i.sec===sec).map(i=>i.g||''))){K[`grp|${sec}|${g}`]=money(secCalc(m,sec,g).tot)}}
+  {let tm=0,tg=0;for(const cat of ORC){const g=catSpent(m,cat),mt=+(m.orc||{})[cat]||0;
+     K[`orc|${cat}|g`]=money(g);K[`orc|${cat}|d`]=mt?money(mt-g):'—';NEG[`orc|${cat}|d`]=mt>0&&mt-g<0;if(mt){tm+=mt;tg+=g}
+     const tr=$(`tr[data-orc="${cat}"]`);if(tr){const r=mt?g/mt:0;tr.classList.toggle('warn',r>=.8&&r<=1);tr.classList.toggle('over',r>1)}}
+   K['orc|t|m']=money(tm);K['orc|t|g']=money(tg);K['orc|t|d']=tm?money(tm-tg):'—';NEG['orc|t|d']=tm>0&&tm-tg<0}
   const ok=c.chk===0&&c.orphan===0;
   K.chkmsg=ok?`Conferido: ${money(c.chk)}`:(c.orphan?`${c.orphan} lançamento(s) sem conta válida — escolha a conta`:`Diferença de ${money(c.chk)}`);
   $$('[data-k]').forEach(e=>{const k=e.dataset.k;if(K[k]!==undefined){e.textContent=K[k];e.classList.toggle('neg',!!NEG[k])}});
@@ -1388,7 +1404,52 @@ function monthStats(k){
     else if(i.sec==='variaveis')pie.diversos+=i.v;
     else if(CARD_SECS.includes(i.sec)){if(isParc(i))parcOut+=i.v;else if(pie[d]!==undefined&&d!=='moradia')pie[d]+=i.v;else pie.diversos+=i.v}}
   return {k,c,pie,parcOut,cartao:by('cartaoM')+by('cartaoD'),fixas:by('fixas'),variaveis:by('variaveis'),reemb:by('reembolsos'),cats,
-    rec:c.totRec,gasto:c.totCon,res:c.totRec-c.totCon,econ:c.totRec?(c.totRec-c.totCon)/c.totRec:NaN,meta:+m.meta||0,saldo:c.inst,per:c.per};
+    rec:c.totRec,gasto:c.totCon,res:c.totRec-c.totCon,econ:c.totRec?(c.totRec-c.totCon)/c.totRec:NaN,meta:+m.meta||0,saldo:c.inst,proj:c.proj,per:c.per};
+}
+const ORC=['mercado','restaurante','gasolina','farmacia','diversos'];
+const ORCL={mercado:'Mercado',restaurante:'Restaurante',gasolina:'Gasolina',farmacia:'Farmácia',diversos:'Diversos'};
+const catSpent=(m,cat)=>r2(m.itens.filter(i=>i.sec==='cartaoM'&&!isParc(i)&&norm(i.d)===cat).reduce((s,i)=>s+i.v,0));
+const varSpent=m=>r2(m.itens.filter(i=>i.sec==='variaveis').reduce((s,i)=>s+i.v,0));
+// média dos até 6 meses anteriores a "before" (só meses com gasto naquela categoria)
+function histAvg(fn,before){
+  const v=monthKeys().filter(k=>k<before).slice(-6).map(k=>fn(db.months[k])).filter(x=>x>0);
+  return v.length?r2(v.reduce((a,b)=>a+b,0)/v.length):0;
+}
+const catAvg=(cat,before)=>histAvg(m=>catSpent(m,cat),before);
+// próximo mês "de mentira", com as mesmas regras do Novo mês (não grava nada)
+function simNext(m){
+  const n={ini:{},meta:m.meta||0,orc:{...(m.orc||{})},itens:[]};
+  for(const it of m.itens){
+    const base={id:uid(),sec:it.sec,g:it.g||'',v:it.v,f:'',d:it.d,dia:it.dia,c:it.c,ok:false};
+    if(isInc(it)){if(!it.rend)n.itens.push(base);continue}
+    if(it.sec==='reembolsos'){const im=String(it.d||'').match(INST_RE);if(im&&+im[3]>=2){const adv=advanceInst(it.d);if(!adv)continue;base.d=adv}n.itens.push(base);continue}
+    const adv=advanceInst(it.d);
+    if(adv){if(it.sec==='cartaoM'||it.sec==='cartaoD'||it.sec==='fixas'){base.d=adv;n.itens.push(base)}continue}
+    if(it.sec==='fixas')n.itens.push(base);
+  }
+  return n;
+}
+// projeção dos próximos meses: sem novas parcelas; categorias = meta do mês (ou média quando não há meta)
+function projecao(N=6){
+  const keys=monthKeys();if(!keys.length)return {rows:[],ass:null};
+  const last=keys[keys.length-1];let m=db.months[last];const c0=calc(m);
+  const before=last>=thisMonthKey()?last:addMonths(last,1);
+  const ass={base:last,ini:c0.proj,cats:{},vari:histAvg(varSpent,before)};
+  const cat={};
+  for(const x of ORC){const meta=+(m.orc||{})[x]||0;const av=catAvg(x,before);cat[x]=meta||av;ass.cats[x]={v:cat[x],src:meta?'meta':(av?'média':'sem dado')}}
+  let ini={};db.accts.forEach(a=>ini[a]=c0.per[a].proj);const rows=[];
+  for(let j=1;j<=N;j++){
+    const v=simNext(m);db.accts.forEach(a=>v.ini[a]=r2(ini[a]));
+    const fixas=r2(v.itens.filter(i=>i.sec==='fixas').reduce((s,i)=>s+i.v,0));
+    const parc=r2(v.itens.filter(i=>(i.sec==='cartaoM'||i.sec==='cartaoD')&&isParc(i)).reduce((s,i)=>s+i.v,0)+v.itens.filter(i=>i.sec==='reembolsos').reduce((s,i)=>s+sv(i),0));
+    for(const x of ORC)if(cat[x]>0)v.itens.push({id:uid(),sec:'cartaoM',g:'',v:cat[x],f:'',d:x,dia:null,c:defAcct(),ok:false});
+    if(ass.vari>0)v.itens.push({id:uid(),sec:'variaveis',g:'',v:ass.vari,f:'',d:'Variáveis (média)',dia:null,c:defAcct(),ok:false});
+    const cc=calc(v);
+    rows.push({k:addMonths(last,j),ini:cc.iniTot,rec:cc.totRec,fixas,parc,vari:r2(ORC.reduce((s,x)=>s+cat[x],0)+ass.vari),saldo:cc.proj});
+    db.accts.forEach(a=>ini[a]=cc.per[a].proj);
+    m={...v,itens:v.itens.filter(i=>!(i.d==='Variáveis (média)'||(i.sec==='cartaoM'&&ORC.includes(i.d)&&!isParc(i))))};
+  }
+  return {rows,ass};
 }
 function futureParcelas(upTo){
   const keys=monthKeys().filter(k=>!upTo||k<=upTo);const base=[...keys].reverse().find(k=>db.months[k].itens.some(i=>[...CARD_SECS,'fixas'].includes(i.sec)&&isParc(i)));
@@ -1434,7 +1495,7 @@ function barChart(el,{labels,series,stacked,fmt=money,H=230,totalOnly}){
     tipShow(e,`<div class="th">${esc(ui.dashLabels?.[i]||labels[i])}</div>`+series.map(s=>`<div class="tr"><i style="background:${s.color}"></i><span>${esc(s.name)}</span><b>${fmt(s.values[i]||0)}</b></div>`).join('')+tot)};
     h.onmouseleave=()=>{h.classList.remove('on');tipHide()}});
 }
-function lineChart(el,{labels,series,fmt=money,afmt=kfmt,H=230,ref}){
+function lineChart(el,{labels,series,fmt=money,afmt=kfmt,H=230,ref,tl}){
   const f=frame(el,H),n=labels.length;if(!n){el.innerHTML='<div class="nodata">Sem dados no período</div>';return}
   const all=series.flatMap(s=>s.values.filter(v=>isFinite(v)));if(ref)all.push(...ref.values.filter(v=>isFinite(v)));
   let lo=Math.min(...all),hi=Math.max(...all);if(lo>0&&!series[0].zero)lo=(hi-lo)<hi*.1?0:Math.max(0,lo-(hi-lo)*.15);
@@ -1443,14 +1504,14 @@ function lineChart(el,{labels,series,fmt=money,afmt=kfmt,H=230,ref}){
   const X=i=>n===1?(f.L+f.W-f.R)/2:f.L+8+(f.W-f.L-f.R-16)*i/(n-1);
   const path=vals=>{let d='',pen=false;vals.forEach((v,i)=>{if(!isFinite(v)){pen=false;return}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1);pen=true});return d};
   let marks=ref?`<path d="${path(ref.values)}" class="refl"/>`:'';
-  series.forEach(s=>{marks+=`<path d="${path(s.values)}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
+  series.forEach(s=>{marks+=`<path d="${path(s.values)}" fill="none" stroke="${s.color}" stroke-width="2" ${s.dash?'stroke-dasharray="6 4" ':''}stroke-linejoin="round"/>`;
     if(n<=24)s.values.forEach((v,i)=>{if(isFinite(v))marks+=`<circle cx="${X(i)}" cy="${Y(v)}" r="3.5" fill="${s.color}" class="dot"/>`})});
   const band=(f.W-f.L-f.R)/n;
   const hits=labels.map((l,i)=>`<rect class="hit" data-i="${i}" x="${n===1?f.L:X(i)-band/2}" y="${f.T}" width="${n===1?f.W-f.L-f.R:band}" height="${f.H-f.T-f.B}"/>`).join('');
   el.innerHTML=`<svg width="${f.W}" height="${f.H}" role="img">${g}<line class="xh" y1="${f.T}" y2="${f.H-f.B}" x1="-9" x2="-9"/>${marks}${xLabels(f,labels,X)}${hits}</svg>`;
   const xh=el.querySelector('.xh');
   el.querySelectorAll('.hit').forEach(h=>{const i=+h.dataset.i;h.onmousemove=e=>{xh.setAttribute('x1',X(i));xh.setAttribute('x2',X(i));
-    tipShow(e,`<div class="th">${esc(ui.dashLabels?.[i]||labels[i])}</div>`+series.map(s=>`<div class="tr"><i style="background:${s.color}"></i><span>${esc(s.name)}</span><b>${fmt(s.values[i])}</b></div>`).join('')+(ref?`<div class="tr"><i class="refi"></i><span>${esc(ref.name)}</span><b>${fmt(ref.values[i])}</b></div>`:''))};
+    tipShow(e,`<div class="th">${esc((tl&&tl[i])||ui.dashLabels?.[i]||labels[i])}</div>`+series.filter(s=>isFinite(s.values[i])).map(s=>`<div class="tr"><i style="background:${s.color}"></i><span>${esc(s.name)}</span><b>${fmt(s.values[i])}</b></div>`).join('')+(ref?`<div class="tr"><i class="refi"></i><span>${esc(ref.name)}</span><b>${fmt(ref.values[i])}</b></div>`:''))};
     h.onmouseleave=()=>{xh.setAttribute('x1',-9);xh.setAttribute('x2',-9);tipHide()}});
 }
 const PIE=[['moradia','Moradia','var(--s1)'],['mercado','Mercado','var(--s2)'],['restaurante','Restaurante','var(--s3)'],['gasolina','Gasolina','var(--s4)'],['farmacia','Farmácia','var(--s5)'],['diversos','Diversos','var(--s6)']];
@@ -1485,6 +1546,7 @@ function dashHTML(){
   const filt=`<div class="dfilt">${chip('12','Últimos 12 meses')}${years.map(y=>chip(y,y)).join('')}${chip('all','Tudo')}${msel}<span class="sp"></span><span class="dper">${ks.length>1?`${mLabel(ks[0])} – ${mLabel(ks[ks.length-1])} · ${ks.length} meses`:ks.length?mLabel(ks[0]):''}</span></div>`;
   if(!ks.length)return filt+`<div class="empty">Sem meses no período.</div>`;
   const S=ks.map(monthStats);ui.dashS=S;ui.dashKs=ks;ui.dashLabels=ks.map(mLabel);
+  ui.projAll=projecao(6);ui.projShow=ks[ks.length-1]===keys[keys.length-1];ui.dashSingle=S.length===1;
   const sum=f=>S.reduce((s,x)=>s+f(x),0);
   const rec=sum(x=>x.rec),gas=sum(x=>x.gasto),res=rec-gas,last=S[S.length-1];
   const FP=futureParcelas(last.k);ui.dashFP=FP;
@@ -1492,7 +1554,7 @@ function dashHTML(){
   const kpi=(l,v,sub,neg)=>`<div class="kpi"><span>${l}</span><b class="${neg?'neg':''}">${v}</b>${sub?`<small>${sub}</small>`:''}</div>`;
   const metaMed=S.reduce((s,x)=>s+x.meta,0)/S.length;
   const kpis=`<div class="kpis">
-    ${kpi('Saldo de todas as contas',money(last.saldo),'em '+mLabel(last.k),last.saldo<0)}
+    ${kpi('Saldo no fim do mês (projeção)',money(last.proj),'em '+mLabel(last.k),last.proj<0)}
     ${kpi('Recebido no período',money(rec),S.length>1?'média '+money(rec/S.length)+'/mês':'')}
     ${kpi('Gasto no período',money(gas),S.length>1?'média '+money(gas/S.length)+'/mês':'')}
     ${kpi('Resultado',money(res),'recebido − gasto',res<0)}
@@ -1511,6 +1573,10 @@ function dashHTML(){
   const fpLeg=`<div class="fpleg">${leg([['var(--s2)','Minhas parcelas'],...(ui.fpTerc?[['var(--s1)','De terceiros (reembolsadas)']]:[])])}<label class="fpchk"><input type="checkbox" id="fpterc" ${ui.fpTerc?'checked':''}> incluir parcelas de terceiros</label></div>`;
   const tbl=`<div class="dtable"><table><thead><tr><th>Mês</th><th>Recebido</th><th>Gasto</th><th>Resultado</th><th>Economia</th><th>Meta</th><th>Saldo</th></tr></thead><tbody>${S.map(x=>`<tr><td>${mLabel(x.k)}</td><td>${money(x.rec)}</td><td>${money(x.gasto)}</td><td class="${x.res<0?'neg':''}">${money(x.res)}</td><td>${pfmt(x.econ)}</td><td>${pfmt(x.meta)}</td><td class="${x.saldo<0?'neg':''}">${money(x.saldo)}</td></tr>`).join('')}</tbody>
    <tfoot><tr><td>Total</td><td>${money(rec)}</td><td>${money(gas)}</td><td class="${res<0?'neg':''}">${money(res)}</td><td>${pfmt(rec?res/rec:NaN)}</td><td></td><td></td></tr></tfoot></table></div>`;
+  const PJ=ui.projAll,pa=PJ.ass;
+  const ptbl=PJ.rows.length?`<div class="dtable"><table><thead><tr><th>Mês</th><th>Receitas</th><th>Contas fixas</th><th>Parcelas (líq. reembolsos)</th><th>Gastos variáveis</th><th>Saldo final</th></tr></thead><tbody>${PJ.rows.map(x=>`<tr><td>${mLabel(x.k)}</td><td>${money(x.rec)}</td><td>${money(x.fixas)}</td><td>${money(x.parc)}</td><td>${money(x.vari)}</td><td class="${x.saldo<0?'neg':''}">${money(x.saldo)}</td></tr>`).join('')}</tbody></table></div>
+    <p class="pnote">Parte da projeção de ${mLabel(pa.base)} (${money(pa.ini)}). Receitas e contas fixas se repetem; as parcelas avançam e terminam, sem nenhuma parcela nova. Gastos variáveis por mês: ${ORC.map(x=>`${ORCL[x]} ${money(pa.cats[x].v)} (${pa.cats[x].src})`).join(' · ')} · Contas variáveis do lar ${money(pa.vari)} (média).</p>`:'<div class="nodata">Sem dados para projetar.</div>';
+  const projCard=card('Projeção dos próximos meses',(S.length===1?leg([['var(--s1)','Saldo no fim do mês (projeção)'],['var(--s2)','Próximos meses']])+'<div class="chart" id="ch-proj"></div>':'')+ptbl,'<span>sem novas parcelas</span>','wide');
   const fpT=FP.list.length?`<div class="dtable"><table><thead><tr><th>Parcela</th><th>Valor</th><th>Faltam</th><th>Termina em</th><th>Restante</th></tr></thead><tbody>${FP.list.map(x=>`<tr><td>${esc(x.d)}</td><td>${money(x.v)}</td><td>${x.falta}</td><td>${mLabel(x.fim)}</td><td>${money(x.resto)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="nodata">Nenhuma parcela a vencer.</div>';
   if(S.length===1){
     const m1=db.months[last.k];const top=m1.itens.filter(i=>CARD_SECS.includes(i.sec)).flatMap(i=>(i.det||[]).map(x=>({...x,cat:i.d}))).sort((a,b)=>b.v-a.v).slice(0,12);
@@ -1523,18 +1589,20 @@ function dashHTML(){
    ${card('Saldo por conta',hbars(accs,{color:'var(--s1)',total:accs.reduce((s,x)=>s+Math.max(0,x.v),0)}),`<span>${mLabel(last.k)}</span>`)}
    ${card('Maiores compras do cartão',topT,'<span>12 maiores</span>')}
    ${card('Parcelas futuras',fpLeg+'<div class="chart" id="ch-fut"></div>',FP.base?`<span>total <b>${money(futTot+(ui.fpTerc?FP.terc:0))}</b></span>`:'')}
+   ${projCard}
    ${card('Minhas parcelas em aberto',fpT,`<span>mais longas primeiro${FP.terc?` · reembolsadas fora da conta (${money(FP.terc)} a vencer)`:''}</span>`,'wide')}
   </div>`;
   }
   return filt+kpis+`<div class="dgrid">
    ${card('Recebido × gasto por mês',leg([['var(--s1)','Recebido'],['var(--s2)','Gasto']])+'<div class="chart" id="ch-rg"></div>')}
-   ${card('Saldo de todas as contas',leg([['var(--s1)','Saldo no fim do mês']])+'<div class="chart" id="ch-saldo"></div>','<span>no mês corrente: saldo de agora</span>')}
+   ${card('Saldo de todas as contas',leg([['var(--s1)','Saldo no fim do mês (projeção)'],['var(--s2)','Próximos meses']])+'<div class="chart" id="ch-saldo"></div>','<span>tracejado: próximos meses, sem novas parcelas</span>')}
    ${pieCard}
    ${card('Cartão por categoria',hbars(catItems),`<span>Total <b>${money(catItems.reduce((s,x)=>s+x.v,0))}</b></span>`)}
    ${card('Gasto por grupo',hbars(grp,{color:'var(--s1)'}),`<span>Total <b>${money(grp.reduce((s,x)=>s+x.v,0))}</b></span>`)}
    ${card('Saldo por conta',hbars(accs,{color:'var(--s1)',total:accs.reduce((s,x)=>s+Math.max(0,x.v),0)}),`<span>${mLabel(last.k)}</span>`)}
    ${card('Parcelas futuras',fpLeg+'<div class="chart" id="ch-fut"></div>',FP.base?`<span>a partir de ${mLabel(addMonths(FP.base,1))} · total <b>${money(futTot+(ui.fpTerc?FP.terc:0))}</b></span>`:'')}
    ${card('Minhas parcelas em aberto',fpT,`<span>mais longas primeiro${FP.terc?` · reembolsadas fora da conta (${money(FP.terc)} a vencer)`:''}</span>`,'wide')}
+   ${projCard}
    ${card('Resumo mês a mês',tbl,'','wide')}
   </div>`;
 }
@@ -1542,7 +1610,12 @@ function drawDash(){
   const S=ui.dashS;if(!S)return;const L=S.map(x=>mShort(x.k));
   const el=id=>document.getElementById(id);
   if(el('ch-rg'))barChart(el('ch-rg'),{labels:L,series:[{name:'Recebido',color:'var(--s1)',values:S.map(x=>x.rec)},{name:'Gasto',color:'var(--s2)',values:S.map(x=>x.gasto)}]});
-  if(el('ch-saldo'))lineChart(el('ch-saldo'),{labels:L,series:[{name:'Saldo',color:'var(--s1)',values:S.map(x=>x.saldo)}]});
+  const saldoCh=(id,Sx,force)=>{const e=el(id);if(!e)return;const F=(force||ui.projShow)?ui.projAll.rows:[];
+    lineChart(e,{labels:Sx.map(x=>mShort(x.k)).concat(F.map(p=>mShort(p.k))),tl:Sx.map(x=>mLabel(x.k)).concat(F.map(p=>mLabel(p.k))),series:[
+      {name:'Saldo no fim do mês',color:'var(--s1)',values:Sx.map(x=>x.proj).concat(F.map(()=>NaN))},
+      ...(F.length?[{name:'Projeção',color:'var(--s2)',dash:true,values:Sx.map((x,i)=>i===Sx.length-1?x.proj:NaN).concat(F.map(p=>p.saldo))}]:[])]})};
+  saldoCh('ch-saldo',S);
+  if(el('ch-proj')){const keysAll=monthKeys();saldoCh('ch-proj',keysAll.slice(-6).map(monthStats),true)}
   if(el('ch-stack'))barChart(el('ch-stack'),{labels:L,stacked:true,series:[{name:'Cartões',color:'var(--s1)',values:S.map(x=>x.cartao)},{name:'Contas fixas',color:'var(--s2)',values:S.map(x=>x.fixas)},{name:'Contas variáveis',color:'var(--s3)',values:S.map(x=>x.variaveis)}]});
   if(el('ch-econ'))lineChart(el('ch-econ'),{labels:L,fmt:pfmt,afmt:v=>Math.round(v*100)+'%',series:[{name:'Economia',color:'var(--s1)',values:S.map(x=>x.econ),zero:true}],ref:{name:'Meta',values:S.map(x=>x.meta)}});
   hookDonut();
@@ -1584,8 +1657,9 @@ document.addEventListener('click',e=>{
     case 'theme':{const r=document.documentElement;const dark=getComputedStyle(r).getPropertyValue('--bg').trim()==='#101716';r.dataset.theme=dark?'light':'dark';try{localStorage.setItem('financeiro.theme',r.dataset.theme)}catch(e){}break}
     case 'acct':askText('Nova conta','Nome da conta','ex.: Nubank, Poupança Dani').then(n=>{if(n&&!db.accts.includes(n)){mutate(()=>db.accts.push(n));render()}});break;
     case 'delm':{const k=ui.cur;askConfirm('Excluir mês',`Excluir ${mLabel(k)} com todos os lançamentos?`,'Excluir').then(ok=>{if(ok){mutate(()=>{delete db.months[k]});ui.cur=monthKeys().slice(-1)[0]||null;render();toast('Mês excluído',{label:'Desfazer',fn:undo})}});break}
-    case 'pull':{const pk=prevKey(ui.cur);if(!pk){toast('Não há mês anterior');break}const c=calc(db.months[pk]);const m=curMonth();mutate(()=>{for(const a of db.accts)m.ini[a]=r2(c.per[a].saldo)});render();toast('Saldos iniciais atualizados com o saldo final de '+mLabel(pk));break}
+    case 'pull':{const pk=prevKey(ui.cur);if(!pk){toast('Não há mês anterior');break}const c=calc(db.months[pk]);const m=curMonth();mutate(()=>{for(const a of db.accts)m.ini[a]=r2(c.per[a].proj)});render();toast('Saldos iniciais atualizados com a projeção do saldo final de '+mLabel(pk));break}
     case 'clear':openClearDialog();break;
+    case 'orcavg':{const m=curMonth();if(!m)break;mutate(()=>{m.orc=m.orc||{};for(const c of ORC){if(!m.orc[c]){const a=Math.round(catAvg(c,ui.cur));if(a>0)m.orc[c]=a}}});render();toast('Metas vazias preenchidas com a média dos meses anteriores');break}
     case 'acerta':{const m=curMonth();if(!m)break;const c=calc(m);const cur=(c.per[MAIN]||{}).saldo||0;
       const ans=prompt(`Saldo real do ${MAIN} agora (como aparece no app do banco).\nO app lança a diferença como rendimento.\n\nSaldo atual no app: ${money(cur)}`,'');
       if(ans===null||!String(ans).trim())break;const real=brNum(String(ans).replace(/R\$/gi,''));
@@ -1614,6 +1688,8 @@ document.addEventListener('change',e=>{
     if(t.dataset.card==='c'){mutate(()=>{m.itens.forEach(i=>{if(i.sec===sec)i.c=t.value});db.last['c_'+sec]=t.value})}
     else{const n=parseInt(t.value,10);const dia=n>=1&&n<=31?n:null;mutate(()=>{m.itens.forEach(i=>{if(i.sec===sec)i.dia=dia});db.last['dia_'+sec]=dia});t.value=dia??''}
     refreshTotals();return}
+  if(t.dataset.orcIn!==undefined){const c=t.dataset.orcIn,m=curMonth();const raw=t.value.trim();const n=raw?evalExpr(raw):0;if(isNaN(n)){t.value=m.orc&&m.orc[c]?NUM.format(m.orc[c]):'';return}
+    mutate(()=>{m.orc=m.orc||{};if(n>0)m.orc[c]=r2(n);else delete m.orc[c]});t.value=n>0?NUM.format(r2(n)):'';refreshTotals();return}
   if(t.id==='meta'){const n=evalExpr(t.value);const m=curMonth();if(isNaN(n)){t.value=PCT.format(m.meta*100);return}mutate(()=>m.meta=n/100);refreshTotals();return}
   if(t.dataset.ini!==undefined){const n=evalExpr(t.value);const m=curMonth();if(isNaN(n)){t.value=NUM.format(+m.ini[t.dataset.ini]||0);return}mutate(()=>m.ini[t.dataset.ini]=r2(n));t.value=NUM.format(r2(n));refreshTotals();return}
   const row=t.closest('.row');if(!row||!t.dataset.f)return;
@@ -1630,7 +1706,7 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('focusin',e=>{
   const t=e.target;if(t.matches('.row input.v')){const it=findItem(t.closest('.row').dataset.id);t.value=editVal(it);t.select()}
-  else if(t.matches('.row input.dia,.row input.d,#meta,[data-ini]'))t.select();
+  else if(t.matches('.row input.dia,.row input.d,#meta,[data-ini],[data-orc-in]'))t.select();
 });
 document.addEventListener('focusout',e=>{
   const t=e.target;if(t.matches('.row input.v')){const row=t.closest('.row');const it=row&&findItem(row.dataset.id);if(it)t.value=dispVal(it)}
@@ -1658,7 +1734,7 @@ function openNewMonth(){
   const dlg=$('#dlg'),has=!!keys.length;
   dlg.innerHTML=`<form class="dl" method="dialog" style="max-width:520px"><h3>Novo mês</h3>
    <label class="lab"><span>Mês</span><input type="month" id="nmk" value="${next}" required></label>
-   ${has?`<div class="chks"><label><input type="checkbox" id="o1" checked> Saldo inicial = saldo final do mês anterior</label>
+   ${has?`<div class="chks"><label><input type="checkbox" id="o1" checked> Saldo inicial = projeção do saldo final do mês anterior</label>
    <label><input type="checkbox" id="o2" checked> Copiar contas fixas</label>
    <label><input type="checkbox" id="o3" checked> Avançar parcelas (2 de 7 vira 3 de 7; some na última)</label>
    <label><input type="checkbox" id="o4" checked> Copiar ganhos (salário, aluguel da sala…)</label>
