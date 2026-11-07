@@ -545,7 +545,7 @@ function advanceInst(desc){
   const n=+m[1],t=+m[3];if(t<2||n<1||n>=t)return null;
   return desc.replace(INST_RE,(s,a,sep,b)=>String(n+1).padStart(a.length,'0')+sep+b);
 }
-function newMonthData(){return {ini:{},meta:0,orc:{},itens:[]}}
+function newMonthData(){return {ini:{},meta:0,orc:orcDefault(),itens:[]}}
 function prevKey(k){return monthKeys().filter(x=>x<k).pop()||null}
 function createMonth(key,o){
   if(db.months[key]){ui.cur=key;render();return}
@@ -556,7 +556,7 @@ function createMonth(key,o){
       if(o.close)sm.closed=true;
       const c=calc(sm);
       if(o.saldo)for(const a of db.accts)m.ini[a]=r2(c.per[a].proj);
-      m.meta=sm.meta||0;m.orc={...(sm.orc||{})};
+      m.meta=sm.meta||0;
       for(const it of sm.itens){
         const base={id:uid(),sec:it.sec,g:it.g||'',v:it.v,f:it.f||'',d:it.d,dia:it.dia,c:it.c,ok:false};
         if(isInc(it)){if(o.rec&&!it.rend){m.itens.push(base);stats.rec++}continue}
@@ -846,6 +846,8 @@ function renderTop(){
      <button data-act="gh">Sincronizar com o GitHub…<small>${GH.cfg?'Conectado: '+esc(GH.cfg.repo+'/'+GH.cfg.path):'Celular e computador com os mesmos dados'}</small></button>
      <hr><button data-act="acct">Adicionar conta…</button>
      ${keys.length?`<button data-act="clear">Limpar ${esc(mLabel(ui.cur||keys[0]))}… (pede senha)</button><button data-act="pw">Alterar senha de autorização…</button><button data-act="delm">Excluir ${esc(mLabel(ui.cur||keys[0]))}</button>`:''}
+     ${keys.length&&!D?`<hr><button data-act="orcclose">${db.months[ui.cur]?.closed?'Reabrir':'Fechar'} ${esc(mLabel(ui.cur||keys[0]))}<small>${db.months[ui.cur]?.closed?'Volta a reservar o disponível das metas na projeção':'A projeção passa a usar só os gastos reais, sem reservar as metas'}</small></button>
+     <button data-act="orcdef">Usar as metas deste mês como padrão<small>Os próximos meses novos começam com elas</small></button>`:''}
      <hr><button data-act="theme">Alternar tema claro/escuro</button>
      <small>${GH.cfg?'Os dados são salvos no GitHub a cada alteração (e ficam também neste aparelho).':'Os dados ficam só neste navegador. Conecte ao GitHub ou baixe um backup de tempos em tempos.'}</small></div></details>`;
   if(typeof ghSetState==='function')ghSetState(GH.state,GH.msg);
@@ -935,7 +937,7 @@ function balHTML(){
 function orcHTML(){
   const m=curMonth(),o=m.orc||{};
   const rows=ORC.map(c=>{const av=catAvg(c,ui.cur);return `<tr data-orc="${c}"><td>${ORCL[c]}</td><td><input data-orc-in="${c}" value="${o[c]?NUM.format(o[c]):''}" placeholder="${av?'média '+NUM.format(av):'0,00'}" inputmode="decimal" aria-label="Meta de ${ORCL[c]}"></td><td data-k="orc|${c}|g"></td><td data-k="orc|${c}|d"></td></tr>`}).join('');
-  return `<section class="sec"><header><h2>Orçamento do mês</h2><div class="tot"><button class="btn ghost" data-act="orcavg" title="Preenche as metas vazias com a média dos meses anteriores">Usar médias</button> <button class="btn ghost" data-act="orcclose" title="${m.closed?'Volta a reservar o disponível das metas na projeção':'Para de reservar o disponível das metas: a projeção passa a usar só os gastos reais'}">${m.closed?'Reabrir mês':'Fechar mês'}</button></div></header>
+  return `<section class="sec"><header><h2>Orçamento do mês</h2><div class="tot"><button class="btn ghost" data-act="orcavg" title="Preenche as metas vazias com a média dos meses anteriores">Usar médias</button></div></header>
   <table class="bal orc"><thead><tr><th>Categoria</th><th>Meta</th><th>Gasto</th><th>Disponível</th></tr></thead><tbody>${rows}</tbody>
   <tfoot><tr><td>Total</td><td data-k="orc|t|m"></td><td data-k="orc|t|g"></td><td data-k="orc|t|d"></td></tr></tfoot></table>
   <p class="pnote">${m.closed?'<b>Mês fechado:</b> a projeção do saldo usa só os gastos reais lançados.':'Reservado na projeção (disponível das metas): <b data-k="orc|res"></b>. Gasto + disponível = meta; ao fechar o mês, vale só o gasto real.'}<br>Conta as compras do cartão (sem parcelas). Amarelo a partir de 80% da meta, vermelho ao passar.</p></section>`;
@@ -972,8 +974,8 @@ function render(){
 function refreshTotals(){
   const m=curMonth();if(!m)return;
   const c=calc(m);const K={};
-  Object.assign(K,{inst:money(c.inst),ini:money(c.iniTot),ini2:money(c.iniTot),rec:money(c.rec),aRec:money(c.aRec),pag:money(c.pag),aPag:money(c.aPag),totRec:money(c.totRec),totCon:money(c.totCon),
-    proj:money(c.proj),metaR:money(c.metaR),projPct:pct(c.projPct),projRS:money(c.projRS),cresc:pct(c.cresc),res:money(c.res),econ:pct(c.econ),pctGasto:c.totRec>0?Math.round(c.totCon/c.totRec*100)+'%':'—'});
+  Object.assign(K,{inst:money(c.inst),ini:money(c.iniTot),ini2:money(c.iniTot),rec:money(c.rec),aRec:money(c.aRec),pag:money(c.pag),aPag:money(c.aPag+c.reserva),totRec:money(c.totRec),totCon:money(c.totCon+c.reserva),
+    proj:money(c.proj),metaR:money(c.metaR),projPct:pct(c.projPct),projRS:money(c.projRS),cresc:pct(c.cresc),res:money(c.res),econ:pct(c.econ),pctGasto:c.totRec>0?Math.round((c.totCon+c.reserva)/c.totRec*100)+'%':'—'});
   const NEG={inst:c.inst<0,proj:c.proj<0,projRS:c.projRS<0,cresc:c.cresc<0,res:c.res<0,econ:c.econ<0};
   {const p=c.per[MAIN]||{saldo:0,ini:0,proj:0};K.mpSaldo=money(p.saldo);K.mpIni=money(p.ini);K.mpProj=money(p.proj);NEG.mpSaldo=p.saldo<0;NEG.mpProj=p.proj<0}
   for(const a of db.accts){const p=c.per[a];K[`acc|${a}|saldo`]=money(p.saldo);K[`acc|${a}|proj`]=money(p.proj);NEG[`acc|${a}|saldo`]=p.saldo<0;NEG[`acc|${a}|proj`]=p.proj<0}
@@ -988,11 +990,11 @@ function refreshTotals(){
   K.chkmsg=ok?`Conferido: ${money(c.chk)}`:(c.orphan?`${c.orphan} lançamento(s) sem conta válida — escolha a conta`:`Diferença de ${money(c.chk)}`);
   $$('[data-k]').forEach(e=>{const k=e.dataset.k;if(K[k]!==undefined){e.textContent=K[k];e.classList.toggle('neg',!!NEG[k])}});
   const cb=$('#chkbox');if(cb)cb.classList.toggle('bad',!ok);
-  {const r=c.totRec>0?c.totCon/c.totRec:(c.totCon>0?Infinity:0);const lvl=r>=1?'over':r>=.8?'warn':'';
-   const fo=$('#flowout'),pl=$('#projline');
+  {const tc=c.totCon+c.reserva;const r=c.totRec>0?tc/c.totRec:(tc>0?Infinity:0);const lvl=r>=1?'over':r>=.8?'warn':'';
+   const fo=$('#flowout'),pl=$('#projline');const fs=$('#flowout small');if(fs)fs.title=c.reserva?`Inclui ${money(c.reserva)} reservados das metas (disponível), até fechar o mês`:'';
    if(fo){fo.classList.toggle('warn',lvl==='warn');fo.classList.toggle('over',lvl==='over');fo.title=lvl?'Gastos em '+(isFinite(r)?Math.round(r*100)+'%':'—')+' da receita':''}
    if(pl){pl.classList.toggle('warn',lvl==='warn');pl.classList.toggle('over',lvl==='over')}}
-  const w={pctRec:c.totRec>0?Math.max(0,Math.min(100,c.rec/c.totRec*100)):0,pctPag:c.totCon>0?Math.max(0,Math.min(100,c.pag/c.totCon*100)):0};
+  const w={pctRec:c.totRec>0?Math.max(0,Math.min(100,c.rec/c.totRec*100)):0,pctPag:(c.totCon+c.reserva)>0?Math.max(0,Math.min(100,c.pag/(c.totCon+c.reserva)*100)):0};
   $$('[data-w]').forEach(e=>e.style.width=w[e.dataset.w]+'%');
 }
 
@@ -1420,6 +1422,8 @@ function monthStats(k){
     rec:c.totRec,gasto:c.totCon,res:c.totRec-c.totCon,econ:c.totRec?(c.totRec-c.totCon)/c.totRec:NaN,meta:+m.meta||0,saldo:c.inst,proj:c.proj,per:c.per};
 }
 const ORC=['mercado','restaurante','gasolina','farmacia','diversos'];
+const ORC_DEF={mercado:3000,restaurante:650,gasolina:650,farmacia:200,diversos:300};
+const orcDefault=()=>({...(db.orcDef||ORC_DEF)});
 const ORCL={mercado:'Mercado',restaurante:'Restaurante',gasolina:'Gasolina',farmacia:'Farmácia',diversos:'Diversos'};
 const catSpent=(m,cat)=>r2(m.itens.filter(i=>i.sec==='cartaoM'&&!isParc(i)&&norm(i.d)===cat).reduce((s,i)=>s+i.v,0));
 const varSpent=m=>r2(m.itens.filter(i=>i.sec==='variaveis').reduce((s,i)=>s+i.v,0));
@@ -1675,6 +1679,7 @@ document.addEventListener('click',e=>{
     case 'orcclose':{const m=curMonth();if(!m)break;
       if(m.closed){mutate(()=>{m.closed=false});render();toast('Mês reaberto: o disponível das metas volta a ser reservado na projeção');break}
       askConfirm('Fechar '+mLabel(ui.cur),'A projeção deixa de reservar o que sobrou das metas e passa a usar só os gastos reais lançados neste mês. Você pode reabrir depois.','Fechar mês').then(ok=>{if(!ok)return;mutate(()=>{m.closed=true});render();toast(mLabel(ui.cur)+' fechado: projeção com gastos reais',{label:'Desfazer',fn:undo})});break}
+    case 'orcdef':{const m=curMonth();if(!m||!m.orc||!Object.keys(m.orc).length){toast('Este mês não tem metas');break}mutate(()=>{db.orcDef={...m.orc}});toast('Metas deste mês viraram o padrão dos próximos meses');break}
     case 'orcavg':{const m=curMonth();if(!m)break;mutate(()=>{m.orc=m.orc||{};for(const c of ORC){if(!m.orc[c]){const a=Math.round(catAvg(c,ui.cur));if(a>0)m.orc[c]=a}}});render();toast('Metas vazias preenchidas com a média dos meses anteriores');break}
     case 'acerta':{const m=curMonth();if(!m)break;const c=calc(m);const cur=(c.per[MAIN]||{}).saldo||0;
       const ans=prompt(`Saldo real do ${MAIN} agora (como aparece no app do banco).\nO app lança a diferença como rendimento.\n\nSaldo atual no app: ${money(cur)}`,'');
