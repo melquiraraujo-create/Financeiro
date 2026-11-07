@@ -877,6 +877,7 @@ function rowHTML(it){
    <select data-f="c" class="${bad?'warnsel':''}" aria-label="Conta">${accOpts}</select>`}
    <button class="xbtn" data-act="del" aria-label="Excluir lançamento" title="Excluir">×</button></div>`;
 }
+function topGroup(sec){const m=curMonth(),cnt={};m.itens.filter(i=>i.sec===sec&&i.g).forEach(i=>cnt[i.g]=(cnt[i.g]||0)+1);return Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]||''}
 function addFormHTML(sec){
   const s=SECS[sec],m=curMonth();const last=db.last['c_'+sec]||defAcct();
   const opts=vAccts(m).map(a=>`<option ${a===last?'selected':''}>${esc(a)}</option>`).join('');
@@ -884,7 +885,7 @@ function addFormHTML(sec){
     return `<form class="add" data-sec="${sec}" autocomplete="off"><span></span><input class="v" name="v" placeholder="Valor" inputmode="decimal" aria-label="Novo valor"><input name="d" placeholder="Descrição (ex.: pix para poupança)" aria-label="Nova descrição"><input class="dia" name="dia" placeholder="dia" inputmode="numeric" maxlength="2" aria-label="Dia"><select name="c" aria-label="De (sai da conta)">${opts}</select><span class="arw" aria-hidden="true">→</span><select name="c2" aria-label="Para (entra na conta)">${o2}</select><button class="btn pri sq" aria-label="Adicionar" title="Adicionar (Enter)">+</button></form>`}
   let grp='';
   if(s.grp){const gs=[...new Set(m.itens.filter(i=>i.sec===sec&&i.g).map(i=>i.g))];
-    grp=`<div class="addgrp addtop"><input name="g" list="gl_${sec}" placeholder="Cartão / grupo" value="${esc(db.last['g_'+sec]||gs[0]||'')}" aria-label="Cartão ou grupo"><button type="button" class="btn" data-act="imp-fat" data-sec="${sec}" title="Importa a fatura do Itaú (.xlsx ou .pdf): parcelas primeiro, o resto somado por categoria">Importar fatura</button><button type="button" class="btn" data-act="imp-sms" data-sec="${sec}" title="Cole os SMS de compra aprovada">Colar SMS</button></div><datalist id="gl_${sec}">${gs.map(g=>`<option value="${esc(g)}">`).join('')}</datalist>`}
+    grp=`<div class="addgrp addtop"><input name="g" list="gl_${sec}" placeholder="Cartão / grupo" value="${esc(topGroup(sec)||db.last['g_'+sec]||gs[0]||'')}" aria-label="Cartão ou grupo"><button type="button" class="btn" data-act="imp-fat" data-sec="${sec}" title="Importa a fatura do Itaú (.xlsx ou .pdf): parcelas primeiro, o resto somado por categoria">Importar fatura</button><button type="button" class="btn" data-act="imp-sms" data-sec="${sec}" title="Cole os SMS de compra aprovada">Colar SMS</button></div><datalist id="gl_${sec}">${gs.map(g=>`<option value="${esc(g)}">`).join('')}</datalist>`}
   return `<form class="add ${s.grp?'card':''}" data-sec="${sec}" autocomplete="off">
    ${grp}
    <span></span><input class="v" name="v" placeholder="Valor" inputmode="decimal" aria-label="Novo valor"><input name="d" placeholder="Descrição" aria-label="Nova descrição">${s.grp?'':`<input class="dia" name="dia" placeholder="dia" inputmode="numeric" maxlength="2" aria-label="Dia"><select name="c" aria-label="Conta">${opts}</select>`}<button class="btn pri sq" aria-label="Adicionar" title="Adicionar (Enter)">+</button></form>`;
@@ -905,7 +906,9 @@ function secHTML(sec){
   if(s.grp){
     const gs=[...new Set(its.map(i=>i.g||''))];
     const single=gs.every(g=>g===''||g==='Geral');
-    body=gs.map(g=>{const rows=its.filter(i=>(i.g||'')===g&&visible(i));
+    const falta=i=>{const q=String(i.d||'').match(INST_RE);return q?(+q[3])-(+q[1]):0};
+    const ordem=a=>a.map((i,ix)=>({i,ix})).sort((x,y)=>{const px=isParc(x.i),py=isParc(y.i);if(px!==py)return px?-1:1;if(px)return falta(y.i)-falta(x.i)||y.i.v-x.i.v||x.ix-y.ix;return x.ix-y.ix}).map(x=>x.i);
+    body=gs.map(g=>{const rows=ordem(its.filter(i=>(i.g||'')===g&&visible(i)));
       if(single)return rows.map(rowHTML).join('');
       return `<div class="grp"><span>${esc(g||'Sem grupo')}</span><b data-k="grp|${esc(sec)}|${esc(g)}"></b></div>`+rows.map(rowHTML).join('')}).join('');
   }else body=its.filter(visible).map(rowHTML).join('');
@@ -1738,9 +1741,11 @@ document.addEventListener('submit',e=>{
   const e2=normExpr(fd.get('v'));const hc=SECS[sec].grp?cardHdr(sec,m):null;if(hc){fd.set('c',hc.c);fd.set('dia',hc.dia??'')}const dn=parseInt(fd.get('dia'),10);
   const g=SECS[sec].grp?String(fd.get('g')||'').trim()||'Geral':'';
   if(SECS[sec].tr&&fd.get('c')===fd.get('c2')){toast('Escolha contas diferentes para origem e destino');return}
+  const gsAntes=SECS[sec].grp?[...new Set(m.itens.filter(i=>i.sec===sec&&i.g&&i.g!=='Geral').map(i=>i.g))]:[];
   const cardPaid=SECS[sec].grp&&(()=>{const a=m.itens.filter(i=>i.sec===sec);return a.length>0&&a.every(i=>i.ok)})();
   mutate(()=>{m.itens.push({id:uid(),sec,g,v:n,f:e2&&!isPlainNum(e2)?e2:'',d:String(fd.get('d')||'').trim(),dia:dn>=1&&dn<=31?dn:null,c:fd.get('c'),ok:!!cardPaid,...(SECS[sec].tr?{c2:fd.get('c2')}:{})});if(SECS[sec].tr)db.last.c2_transf=fd.get('c2');db.last['c_'+sec]=fd.get('c');if(g)db.last['g_'+sec]=g});
   ui.focus=sec;render();
+  if(gsAntes.length&&g&&!gsAntes.includes(g)){const top=topGroup(sec);toast(`Criou o grupo novo "${g}". Para somar no cartão existente, digite "${gsAntes.includes(top)?top:gsAntes[0]}" no campo Cartão / grupo.`)}
 });
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&!e.target.matches('input,textarea')){e.preventDefault();undo()}
