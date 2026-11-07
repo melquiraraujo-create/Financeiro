@@ -502,6 +502,17 @@ function toast(msg,action){
 }
 
 /* ============ cálculo (mesma lógica da planilha) ============ */
+// o que ainda falta gastar das metas do mês (disponível), somado às despesas na projeção; mês fechado não reserva nada
+function orcReserve(m,accts){
+  const R={total:0,per:{}};accts.forEach(a=>R.per[a]=0);
+  if(m.closed||!m.orc)return R;
+  for(const cat of ORC){const meta=+m.orc[cat]||0;if(!meta)continue;
+    const its=m.itens.filter(i=>i.sec==='cartaoM'&&!isParc(i)&&norm(i.d)===cat);
+    const res=r2(Math.max(0,meta-its.reduce((t,i)=>t+i.v,0)));if(!res)continue;
+    let a=(its[0]&&its[0].c)||(db.last&&db.last.c_cartaoM)||defAcct();if(!(a in R.per))a=defAcct();
+    R.total+=res;R.per[a]=(R.per[a]||0)+res}
+  R.total=r2(R.total);return R;
+}
 function calc(m,accts=db.accts){
   let rec=0,aRec=0,pag=0,aPag=0,orphan=0;
   const per={};accts.forEach(a=>per[a]={ini:+(m.ini?.[a])||0,ent:0,sai:0,entP:0,saiP:0});
@@ -515,9 +526,10 @@ function calc(m,accts=db.accts){
   }
   let iniTot=0,sumSaldo=0;
   for(const a of accts){const p=per[a];p.saldo=p.ini+p.ent-p.sai;p.proj=p.ini+p.entP-p.saiP;iniTot+=p.ini;sumSaldo+=p.saldo}
-  const totRec=rec+aRec,totCon=pag+aPag,inst=iniTot+rec-pag,proj=iniTot+totRec-totCon;
+  const R=orcReserve(m,accts);for(const a of accts)per[a].proj=r2(per[a].proj-(R.per[a]||0));
+  const totRec=rec+aRec,totCon=pag+aPag,inst=iniTot+rec-pag,proj=r2(iniTot+totRec-totCon-R.total);
   const meta=+m.meta||0,metaR=iniTot+totRec*meta;
-  return {rec,aRec,pag,aPag,totRec,totCon,iniTot,inst,proj,metaR,meta,per,orphan,
+  return {rec,aRec,pag,aPag,totRec,totCon,iniTot,inst,proj,reserva:R.total,metaR,meta,per,orphan,
     projPct:metaR?proj/metaR:NaN,projRS:proj-metaR,cresc:iniTot?proj/iniTot-1:NaN,res:proj-iniTot,
     econ:totRec?(proj-iniTot)/totRec:NaN,chk:r2(sumSaldo-inst)};
 }
@@ -541,6 +553,7 @@ function createMonth(key,o){
   mutate(()=>{
     const m=newMonthData();
     if(sm){
+      if(o.close)sm.closed=true;
       const c=calc(sm);
       if(o.saldo)for(const a of db.accts)m.ini[a]=r2(c.per[a].proj);
       m.meta=sm.meta||0;m.orc={...(sm.orc||{})};
@@ -922,10 +935,10 @@ function balHTML(){
 function orcHTML(){
   const m=curMonth(),o=m.orc||{};
   const rows=ORC.map(c=>{const av=catAvg(c,ui.cur);return `<tr data-orc="${c}"><td>${ORCL[c]}</td><td><input data-orc-in="${c}" value="${o[c]?NUM.format(o[c]):''}" placeholder="${av?'média '+NUM.format(av):'0,00'}" inputmode="decimal" aria-label="Meta de ${ORCL[c]}"></td><td data-k="orc|${c}|g"></td><td data-k="orc|${c}|d"></td></tr>`}).join('');
-  return `<section class="sec"><header><h2>Orçamento do mês</h2><div class="tot"><button class="btn ghost" data-act="orcavg" title="Preenche as metas vazias com a média dos meses anteriores">Usar médias</button></div></header>
+  return `<section class="sec"><header><h2>Orçamento do mês</h2><div class="tot"><button class="btn ghost" data-act="orcavg" title="Preenche as metas vazias com a média dos meses anteriores">Usar médias</button> <button class="btn ghost" data-act="orcclose" title="${m.closed?'Volta a reservar o disponível das metas na projeção':'Para de reservar o disponível das metas: a projeção passa a usar só os gastos reais'}">${m.closed?'Reabrir mês':'Fechar mês'}</button></div></header>
   <table class="bal orc"><thead><tr><th>Categoria</th><th>Meta</th><th>Gasto</th><th>Disponível</th></tr></thead><tbody>${rows}</tbody>
   <tfoot><tr><td>Total</td><td data-k="orc|t|m"></td><td data-k="orc|t|g"></td><td data-k="orc|t|d"></td></tr></tfoot></table>
-  <p class="pnote">Conta as compras do cartão (sem parcelas) e desconta da meta. Amarelo a partir de 80% da meta, vermelho ao passar.</p></section>`;
+  <p class="pnote">${m.closed?'<b>Mês fechado:</b> a projeção do saldo usa só os gastos reais lançados.':'Reservado na projeção (disponível das metas): <b data-k="orc|res"></b>. Gasto + disponível = meta; ao fechar o mês, vale só o gasto real.'}<br>Conta as compras do cartão (sem parcelas). Amarelo a partir de 80% da meta, vermelho ao passar.</p></section>`;
 }
 function summaryHTML(){
   return `<section class="band" aria-label="Resumo do mês">
@@ -952,7 +965,7 @@ function render(){
   if(ui.view==='dash'){app.innerHTML=`<div class="dash">${dashHTML()}</div>`;drawDash();return}
   ui.t3=thirdParcels(m);
   const fab=`<button class="fab" data-act="imp-sms" data-sec="cartaoM" aria-label="Colar SMS do cartão">＋ SMS</button>`;
-  app.innerHTML=fab+summaryHTML()+`<div class="cols"><div>${['cartaoM','cartaoD','fixas','variaveis','transf'].filter(k=>secShown(k)).map(secHTML).join('')}</div><div class="col-side">${['ganhosM','ganhosD','reembolsos'].filter(k=>secShown(k)).map(secHTML).join('')}${orcHTML()}${balHTML()}</div></div>`;
+  app.innerHTML=fab+summaryHTML()+`<div class="cols"><div>${['cartaoM','cartaoD','fixas','variaveis'].filter(k=>secShown(k)).map(secHTML).join('')}${orcHTML()}${['transf'].filter(k=>secShown(k)).map(secHTML).join('')}</div><div class="col-side">${['ganhosM','ganhosD','reembolsos'].filter(k=>secShown(k)).map(secHTML).join('')}${balHTML()}</div></div>`;
   refreshTotals();
   if(ui.focus){const f=$(`form.add[data-sec="${ui.focus}"] input[name="v"]`);f&&f.focus();ui.focus=null}
 }
@@ -970,7 +983,7 @@ function refreshTotals(){
   {let tm=0,tg=0;for(const cat of ORC){const g=catSpent(m,cat),mt=+(m.orc||{})[cat]||0;
      K[`orc|${cat}|g`]=money(g);K[`orc|${cat}|d`]=mt?money(mt-g):'—';NEG[`orc|${cat}|d`]=mt>0&&mt-g<0;if(mt){tm+=mt;tg+=g}
      const tr=$(`tr[data-orc="${cat}"]`);if(tr){const r=mt?g/mt:0;tr.classList.toggle('warn',r>=.8&&r<=1);tr.classList.toggle('over',r>1)}}
-   K['orc|t|m']=money(tm);K['orc|t|g']=money(tg);K['orc|t|d']=tm?money(tm-tg):'—';NEG['orc|t|d']=tm>0&&tm-tg<0}
+   K['orc|res']=money(c.reserva);K['orc|t|m']=money(tm);K['orc|t|g']=money(tg);K['orc|t|d']=tm?money(tm-tg):'—';NEG['orc|t|d']=tm>0&&tm-tg<0}
   const ok=c.chk===0&&c.orphan===0;
   K.chkmsg=ok?`Conferido: ${money(c.chk)}`:(c.orphan?`${c.orphan} lançamento(s) sem conta válida — escolha a conta`:`Diferença de ${money(c.chk)}`);
   $$('[data-k]').forEach(e=>{const k=e.dataset.k;if(K[k]!==undefined){e.textContent=K[k];e.classList.toggle('neg',!!NEG[k])}});
@@ -1439,7 +1452,7 @@ function projecao(N=6){
   for(const x of ORC){const meta=+(m.orc||{})[x]||0;const av=catAvg(x,before);cat[x]=meta||av;ass.cats[x]={v:cat[x],src:meta?'meta':(av?'média':'sem dado')}}
   let ini={};db.accts.forEach(a=>ini[a]=c0.per[a].proj);const rows=[];
   for(let j=1;j<=N;j++){
-    const v=simNext(m);db.accts.forEach(a=>v.ini[a]=r2(ini[a]));
+    const v=simNext(m);v.closed=true;db.accts.forEach(a=>v.ini[a]=r2(ini[a]));
     const fixas=r2(v.itens.filter(i=>i.sec==='fixas').reduce((s,i)=>s+i.v,0));
     const parc=r2(v.itens.filter(i=>(i.sec==='cartaoM'||i.sec==='cartaoD')&&isParc(i)).reduce((s,i)=>s+i.v,0)+v.itens.filter(i=>i.sec==='reembolsos').reduce((s,i)=>s+sv(i),0));
     for(const x of ORC)if(cat[x]>0)v.itens.push({id:uid(),sec:'cartaoM',g:'',v:cat[x],f:'',d:x,dia:null,c:defAcct(),ok:false});
@@ -1659,6 +1672,9 @@ document.addEventListener('click',e=>{
     case 'delm':{const k=ui.cur;askConfirm('Excluir mês',`Excluir ${mLabel(k)} com todos os lançamentos?`,'Excluir').then(ok=>{if(ok){mutate(()=>{delete db.months[k]});ui.cur=monthKeys().slice(-1)[0]||null;render();toast('Mês excluído',{label:'Desfazer',fn:undo})}});break}
     case 'pull':{const pk=prevKey(ui.cur);if(!pk){toast('Não há mês anterior');break}const c=calc(db.months[pk]);const m=curMonth();mutate(()=>{for(const a of db.accts)m.ini[a]=r2(c.per[a].proj)});render();toast('Saldos iniciais atualizados com a projeção do saldo final de '+mLabel(pk));break}
     case 'clear':openClearDialog();break;
+    case 'orcclose':{const m=curMonth();if(!m)break;
+      if(m.closed){mutate(()=>{m.closed=false});render();toast('Mês reaberto: o disponível das metas volta a ser reservado na projeção');break}
+      askConfirm('Fechar '+mLabel(ui.cur),'A projeção deixa de reservar o que sobrou das metas e passa a usar só os gastos reais lançados neste mês. Você pode reabrir depois.','Fechar mês').then(ok=>{if(!ok)return;mutate(()=>{m.closed=true});render();toast(mLabel(ui.cur)+' fechado: projeção com gastos reais',{label:'Desfazer',fn:undo})});break}
     case 'orcavg':{const m=curMonth();if(!m)break;mutate(()=>{m.orc=m.orc||{};for(const c of ORC){if(!m.orc[c]){const a=Math.round(catAvg(c,ui.cur));if(a>0)m.orc[c]=a}}});render();toast('Metas vazias preenchidas com a média dos meses anteriores');break}
     case 'acerta':{const m=curMonth();if(!m)break;const c=calc(m);const cur=(c.per[MAIN]||{}).saldo||0;
       const ans=prompt(`Saldo real do ${MAIN} agora (como aparece no app do banco).\nO app lança a diferença como rendimento.\n\nSaldo atual no app: ${money(cur)}`,'');
@@ -1738,10 +1754,11 @@ function openNewMonth(){
    <label><input type="checkbox" id="o2" checked> Copiar contas fixas</label>
    <label><input type="checkbox" id="o3" checked> Avançar parcelas (2 de 7 vira 3 de 7; some na última)</label>
    <label><input type="checkbox" id="o4" checked> Copiar ganhos (salário, aluguel da sala…)</label>
-   <label><input type="checkbox" id="o5" checked> Copiar reembolsos (parcelados avançam; somem na última)</label></div>`:''}
+   <label><input type="checkbox" id="o5" checked> Copiar reembolsos (parcelados avançam; somem na última)</label>
+   <label><input type="checkbox" id="o6" ${keys[keys.length-1]<thisMonthKey()?'checked':''}> Fechar o mês anterior (a projeção dele passa a usar só os gastos reais)</label></div>`:''}
    <div class="foot"><button class="btn" value="cancel">Cancelar</button><button class="btn pri" value="ok">Criar mês</button></div></form>`;
   dlg.onclose=()=>{if(dlg.returnValue!=='ok')return;const k=$('#nmk').value;if(!/^\d{4}-\d{2}$/.test(k))return;
-    createMonth(k,{saldo:!has||$('#o1').checked,fix:!has||$('#o2').checked,par:!has||$('#o3').checked,rec:!has||$('#o4').checked,reemb:!has||$('#o5').checked})};
+    createMonth(k,{saldo:!has||$('#o1').checked,fix:!has||$('#o2').checked,par:!has||$('#o3').checked,rec:!has||$('#o4').checked,reemb:!has||$('#o5').checked,close:has&&$('#o6').checked})};
   dlg.showModal();
 }
 
