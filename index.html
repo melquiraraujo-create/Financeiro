@@ -954,7 +954,7 @@ function summaryHTML(){
     <div class="flow in"><div class="t"><span>Recebido</span><b class="amt" data-k="rec"></b></div><div class="bar"><i data-w="pctRec"></i></div><small>de <span data-k="totRec"></span> · falta receber <b data-k="aRec"></b></small></div>
     <div class="flow out" id="flowout"><div class="t"><span>Pago</span><b class="amt" data-k="pag"></b></div><div class="bar"><i data-w="pctPag"></i></div><small>de <span data-k="totCon"></span> · falta pagar <b data-k="aPag"></b></small></div>
    </div>
-   <div class="projline" id="projline"><div class="fim" title="Saldo inicial + todos os recebimentos do mês − todos os gastos do mês"><span>Saldo no fim do mês (projeção)</span><b data-k="proj"></b></div><div class="reemb"><span>Reembolsos</span><span>recebido</span><b data-k="reRec"></b><span>· a receber</span><b data-k="reAR"></b></div><div class="pctg" title="Gastos previstos, já descontados os reembolsos"><span>Gastos do mês</span><b data-k="pctGasto"></b><span>da receita</span></div></div></section>`;
+   <div class="projline" id="projline"><div class="fim" title="Saldo inicial + todos os recebimentos do mês − todos os gastos do mês"><span>Saldo no fim do mês (projeção)</span><b data-k="proj"></b></div><div class="reemb"><span>Reembolsos</span><span>recebido</span><b data-k="reRec"></b><span>· a receber</span><b data-k="reAR"></b></div><div class="pctg" title="Minhas contas: tudo que preciso pagar (com o disponível das metas, até fechar o mês), menos os reembolsos de terceiros, recebidos ou a receber"><span>Minhas contas</span><b data-k="minhas"></b><span>·</span><b data-k="pctGasto"></b><span>da receita</span></div></div></section>`;
 }
 function emptyHTML(){
   return `<div class="welcome"><h1>${esc(PROFILE.title)}</h1><p>Seu controle mensal do Excel, agora em uma página só, que funciona sem internet. Comece trazendo o que você já tem.</p>
@@ -980,8 +980,8 @@ function refreshTotals(){
   const m=curMonth();if(!m)return;
   const c=calc(m);const K={};
   Object.assign(K,{inst:money(c.inst),ini:money(c.iniTot),ini2:money(c.iniTot),rec:money(c.rec),aRec:money(c.aRec),pag:money(c.pagB),aPag:money(c.aPagB+c.reserva),reRec:money(c.reembR),reAR:money(c.reembA),totRec:money(c.totRec),totCon:money(c.totConB+c.reserva),
-    proj:money(c.proj),metaR:money(c.metaR),projPct:pct(c.projPct),projRS:money(c.projRS),cresc:pct(c.cresc),res:money(c.res),econ:pct(c.econ),pctGasto:c.totRec>0?Math.round((c.totCon+c.reserva)/c.totRec*100)+'%':'—'});
-  const NEG={inst:c.inst<0,proj:c.proj<0,projRS:c.projRS<0,cresc:c.cresc<0,res:c.res<0,econ:c.econ<0};
+    proj:money(c.proj),metaR:money(c.metaR),projPct:pct(c.projPct),projRS:money(c.projRS),cresc:pct(c.cresc),res:money(c.res),econ:pct(c.econ),minhas:money(c.totCon+c.reserva),pctGasto:c.totRec>0?Math.round((c.totCon+c.reserva)/c.totRec*100)+'%':'—'});
+  const NEG={minhas:c.totCon+c.reserva<0,inst:c.inst<0,proj:c.proj<0,projRS:c.projRS<0,cresc:c.cresc<0,res:c.res<0,econ:c.econ<0};
   {const p=c.per[MAIN]||{saldo:0,ini:0,proj:0};K.mpSaldo=money(p.saldo);K.mpIni=money(p.ini);K.mpProj=money(p.proj);NEG.mpSaldo=p.saldo<0;NEG.mpProj=p.proj<0}
   for(const a of db.accts){const p=c.per[a];K[`acc|${a}|saldo`]=money(p.saldo);K[`acc|${a}|proj`]=money(p.proj);NEG[`acc|${a}|saldo`]=p.saldo<0;NEG[`acc|${a}|proj`]=p.proj<0}
   for(const sec of Object.keys(SECS)){const s=secCalc(m,sec);K[`sec|${sec}|tot`]=money(s.tot);K[`sec|${sec}|pg`]=money(s.pg);K[`sec|${sec}|falta`]=money(s.falta);
